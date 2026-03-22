@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: banking
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: bankpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d banking"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  hazelcast-1:
+    image: hazelcast/hazelcast:5.6.0
+    environment:
+      JAVA_OPTS: -Dhazelcast.config=/opt/hazelcast/config_ext/hazelcast.yaml
+    volumes:
+      - ./hazelcast/node1.yaml:/opt/hazelcast/config_ext/hazelcast.yaml:ro
+    ports:
+      - "5701:5701"
+
+  hazelcast-2:
+    image: hazelcast/hazelcast:5.6.0
+    environment:
+      JAVA_OPTS: -Dhazelcast.config=/opt/hazelcast/config_ext/hazelcast.yaml
+    volumes:
+      - ./hazelcast/node2.yaml:/opt/hazelcast/config_ext/hazelcast.yaml:ro
+    ports:
+      - "5702:5701"
+
+  hazelcast-3:
+    image: hazelcast/hazelcast:5.6.0
+    environment:
+      JAVA_OPTS: -Dhazelcast.config=/opt/hazelcast/config_ext/hazelcast.yaml
+    volumes:
+      - ./hazelcast/node3.yaml:/opt/hazelcast/config_ext/hazelcast.yaml:ro
+    ports:
+      - "5703:5701"
+
+  logging-service-1:
+    build: ./logging-service
+    environment:
+      PORT: 3001
+      INSTANCE_NAME: logging-service-1
+      HZ_CLUSTER_NAME: assignment-3
+      HZ_MEMBERS: hazelcast-1:5701,hazelcast-2:5701,hazelcast-3:5701
+    depends_on:
+      - hazelcast-1
+      - hazelcast-2
+      - hazelcast-3
+    ports:
+      - "3001:3001"
+
+  logging-service-2:
+    build: ./logging-service
+    environment:
+      PORT: 3001
+      INSTANCE_NAME: logging-service-2
+      HZ_CLUSTER_NAME: assignment-3
+      HZ_MEMBERS: hazelcast-1:5701,hazelcast-2:5701,hazelcast-3:5701
+    depends_on:
+      - hazelcast-1
+      - hazelcast-2
+      - hazelcast-3
+    ports:
+      - "3003:3001"
+
+  logging-service-3:
+    build: ./logging-service
+    environment:
+      PORT: 3001
+      INSTANCE_NAME: logging-service-3
+      HZ_CLUSTER_NAME: assignment-3
+      HZ_MEMBERS: hazelcast-1:5701,hazelcast-2:5701,hazelcast-3:5701
+    depends_on:
+      - hazelcast-1
+      - hazelcast-2
+      - hazelcast-3
+    ports:
+      - "3004:3001"
+
+  counter-service:
+    build: ./counter-service
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgresql://bank:bankpass@postgres:5432/banking
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3002:3002"
+
+  facade-service:
+    build: ./facade-service
+    environment:
+      PORT: 3000
+      COUNTER_URL: http://counter-service:3002
+      LOGGING_URLS: http://logging-service-1:3001,http://logging-service-2:3001,http://logging-service-3:3001
+    depends_on:
+      - counter-service
+      - logging-service-1
+      - logging-service-2
+      - logging-service-3
+    ports:
+      - "3000:3000"
